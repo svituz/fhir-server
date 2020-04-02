@@ -72,7 +72,7 @@ def fhir_token(value, name=None, modifier=None):
         system, code = parts
     else:
         raise ValueError
-    return (system, code), modifier
+    return system, code, modifier
 
 
 def fhir_reference(value, name=None, modifier=None):
@@ -96,7 +96,7 @@ def fhir_reference(value, name=None, modifier=None):
         typ, value = parts
     else:
         raise ValueError
-    return typ, value, modifier
+    return value, typ, modifier
 
 
 def fhir_quantity(value, name=None, modifier=None):

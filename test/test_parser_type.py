@@ -114,18 +114,18 @@ class TestPatient(TestCase):
     def test_token(self):
         test_value = "testvalue"
         for modifier in (None, ':not', ':in', ':not-in', ':below', ':above'):
-            (code_system, value), modifier = fhir_token(test_value, None, modifier)
-            self.assertEqual(code_system, '')
-            self.assertEqual(value, test_value)
+            system, code, modifier = fhir_token(test_value, None, modifier)
+            self.assertEqual(system, '')
+            self.assertEqual(code, test_value)
             self.assertEqual(modifier, modifier)
 
     def test_token_with_code_system(self):
-        system_code = 'system_code'
-        test_value = 'testvalue'
+        system_value = 'system_code'
+        code_value = 'testvalue'
         for modifier in (None, ':not', ':in', ':not-in', ':below', ':above'):
-            (code_system, value), modifier = fhir_token('{}|{}'.format(system_code, test_value), None, modifier)
-            self.assertEqual(code_system, system_code)
-            self.assertEqual(value, test_value)
+            system, code, modifier = fhir_token('{}|{}'.format(system_value, code_value), None, modifier)
+            self.assertEqual(system, system_value)
+            self.assertEqual(code, code_value)
             self.assertEqual(modifier, modifier)
 
     def test_token_with_missing_modifier(self):
@@ -150,19 +150,19 @@ class TestPatient(TestCase):
         test_value = '12'  # logical id
 
         for modifier in [None, ':identifier', ':above', ':below']:
-            typ, value, modifier = fhir_reference(test_value, None, modifier)
+            value, typ, modifier = fhir_reference(test_value, None, modifier)
             self.assertEqual(typ, None)
             self.assertEqual(value, test_value)
             self.assertEqual(modifier, modifier)
 
         for r in RESOURCES:
-            typ, value, modifier = fhir_reference('{}/{}'.format(r, test_value), None, None)
+            value, typ, modifier = fhir_reference('{}/{}'.format(r, test_value), None, None)
             self.assertEqual(typ, r)
             self.assertEqual(value, test_value)
             self.assertEqual(modifier, None)
 
             for modifier in [None, ':identifier', ':above', ':below']:
-                typ, value, modifier = fhir_reference('{}/{}'.format(r, test_value), None, modifier)
+                value, typ, modifier = fhir_reference('{}/{}'.format(r, test_value), None, modifier)
                 self.assertEqual(typ, r)
                 self.assertEqual(value, test_value)
                 self.assertEqual(modifier, modifier)
