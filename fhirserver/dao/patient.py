@@ -5,7 +5,8 @@ from sqlalchemy import Column, String, Date, Boolean
 
 from fhirclient.models.patient import Patient
 from fhirserver import db
-import operator
+from fhirserver.parser_types import FHIRString, FHIRToken
+
 
 class PatientModel(db.Model):
     __tablename__ = 'patients'
@@ -56,31 +57,24 @@ class PatientDAO(object):
 
     @classmethod
     def get(cls, patient_id):
-        patients = cls.search(id=(patient_id, 'eq'))
-        if len(patients) == 1:
-            return patients[0]
+        patient = PatientModel.query.get(patient_id)
+        if patient is not None:
+            return patient.to_fhir_res()
+        return None
 
     @classmethod
     def search(cls, **query_args):
         filters = []
-        for name, value in query_args.items():
-            if value is not None:
-                if isinstance(value, tuple):
-                    # TODO: change to check the type and not the value length
-                    if len(value) == 2:
-                        value, operation = value
-                        if isinstance(value, tuple):
-                            value = value[1]
-                        if operation == 'eq':
-                            filters.append(getattr(PatientModel, name) == value)
-                    elif len(value) == 3:
-                        system, value, modifiers = value
-                        if modifiers == ':not=':
-                            filters.append(getattr(PatientModel, name) != value)
-                        else:
-                            filters.append(getattr(PatientModel, name) == value)
-                else:
-                    filters.append(getattr(PatientModel, name) == value)
+        for name, search_object in query_args.items():
+            if search_object is not None:
+                if isinstance(search_object, FHIRString):
+                    filters.append(getattr(PatientModel, name) == search_object.value)
+                elif isinstance(search_object, FHIRToken):
+                    if search_object.modifier == ':not=':
+                        filters.append(getattr(PatientModel, name) != search_object.value)
+                    else:
+                        filters.append(getattr(PatientModel, name) == search_object.value)
+
         return [patient.to_fhir_res() for patient in PatientModel.query.filter(*filters).all()]
 
     @classmethod

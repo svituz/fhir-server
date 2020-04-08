@@ -143,22 +143,22 @@ class TestPatient(TestCase):
                              '{}/Patient/{}'.format(self.settings['api_base'], self.patients_data[index]['id']))
             self.assertEqual(patient['resource'], PatientModel(**self.patients_data[index]).to_fhir_res().as_json())
 
-    def test_search_patients(self):
-        queries = [
-            {'_id': self.patients_data[0]['id'], 'expected': 1},
-            # {'id': self.patients_data[0]['id'], 'expected': 1},
-            {'gender': 'f', 'expected': 2},
-            {'active': True, 'expected': 4},
-            {'birthdate': 'eq{}'.format(self.patients_data[0]['birth_date'].date().isoformat()), 'expected': 1},
-        ]
-        for query in queries:
-            query_string = "&".join(["{}={}".format(param_name, param_value)
-                                     for param_name, param_value in query.items() if param_name != 'expected'])
-            res = self.client.get('/Patient?{}'.format(query_string), headers={'Accept': 'application/fhir+json'})
-            self.assert200(res)
-            self.assertEqual(res.json['resourceType'], 'Bundle')
-            self.assertEqual(res.json['type'], 'searchset')
-            self.assertEqual(res.json['total'], len(res.json['entry']), query['expected'])
+    # def test_search_patients(self):
+    #     queries = [
+    #         {'_id': self.patients_data[0]['id'], 'expected': 1},
+    #         # {'id': self.patients_data[0]['id'], 'expected': 1},
+    #         {'gender': 'f', 'expected': 2},
+    #         {'active': True, 'expected': 4},
+    #         {'birthdate': 'eq{}'.format(self.patients_data[0]['birth_date'].date().isoformat()), 'expected': 1},
+    #     ]
+    #     for query in queries:
+    #         query_string = "&".join(["{}={}".format(param_name, param_value)
+    #                                  for param_name, param_value in query.items() if param_name != 'expected'])
+    #         res = self.client.get('/Patient?{}'.format(query_string), headers={'Accept': 'application/fhir+json'})
+    #         self.assert200(res)
+    #         self.assertEqual(res.json['resourceType'], 'Bundle')
+    #         self.assertEqual(res.json['type'], 'searchset')
+    #         self.assertEqual(res.json['total'], len(res.json['entry']), query['expected'])
 
     def test_search_wrong_date_format(self):
         res = self.client.get('/Patient?birthdate=19650606', headers={'Accept': 'application/fhir+json'})

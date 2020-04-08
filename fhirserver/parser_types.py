@@ -6,126 +6,164 @@ from flask_restful.reqparse import Argument
 _prefixes = ('eq', 'ne', 'gt', 'lt', 'ge', 'le', 'gt', 'sa', 'eb', 'ap')
 
 
-def _check_modifier(value, modifier, allowed_modifiers):
-    if modifier not in allowed_modifiers:
+def _check_operator(value, operator, allowed_modifiers):
+    if operator not in allowed_modifiers and operator is not None:
         raise ValueError
-    if modifier == ':missing=' and value not in ('true', 'false'):
+
+    if operator == ':missing=' and value not in ('true', 'false'):
         raise ValueError
 
 
-def fhir_number(value, name=None, modifier=None):
+class BaseFHIRSearch(object):
+
+    OPERATORS = ('=', ':missing=')
+
+    def __init__(self, value, name=None, operator='='):
+
+        _check_operator(value, operator, self.OPERATORS)
+
+        self.modifier = operator.replace('=', '') if operator != '=' and operator is not None else None
+
+        if self.modifier == ':missing':
+            self.value = value == 'true'
+        else:
+            self.value = None
+
+
+class FHIRNumber(BaseFHIRSearch):
     """
     A fhir number parameter can be a number or a number prefixed with a modifier (e.g., 10, 10.0, ne10)
     """
-    _check_modifier(value, modifier, (None, ':missing='))
 
-    if modifier == ':missing=':
-        return value == 'true', None, modifier
+    def __init__(self, value, name=None, operator='='):
+        super(FHIRNumber, self).__init__(value, name, operator)
+        if isinstance(self.value, bool):
+            self.operation = None
 
-    operation, number = value[0:2], value[2:]
-    if operation not in _prefixes:
-        operation = 'eq'
-        number = value
+        if self.value is None:
+            operation, number = value[0:2], value[2:]
 
-    for typ in (int, float):
-        try:
-            return typ(number), operation, modifier
-        except ValueError:
-            continue
+            if operation not in _prefixes:
+                operation = 'eq'
+                number = value
 
-    raise ValueError
-
-
-def fhir_date(value, name=None, modifier=None):
-    allowed_modifiers = ('=', ':missing=')
-    _check_modifier(value, modifier, allowed_modifiers)
-
-    if modifier == ':missing=':
-        return value == 'true', None, modifier
-
-    operation, datestr = value[0:2], value[2:]
-    if operation in _prefixes:
-        # that the method raises a Value Error if it fails, as required by Flask Restful
-        return isoparse(datestr), operation, modifier
-    raise ValueError
+            for typ in (int, float):
+                try:
+                    self.value = typ(number)
+                    self.operation = operation
+                    break
+                except ValueError:
+                    continue
+            else:
+                raise ValueError
 
 
-def fhir_string(value, name=None, modifier=None):
-    allowed_modifiers = ('=', ':missing=', ':exact', ':contains')
-    _check_modifier(value, modifier, allowed_modifiers)
+class FHIRDate(BaseFHIRSearch):
 
-    if modifier == ':missing=':
-        return value == 'true', None, modifier
-
-    return value, modifier
-
-
-def fhir_token(value, name=None, modifier=None):
-
-    allowed_modifiers = ('=', ':missing=', ':not=', ':in=', ':not-in=', ':below=', ':above=')
-    _check_modifier(value, modifier, allowed_modifiers)
-
-    if modifier == ':missing=':
-        return value == 'true', None, modifier
-    parts = value.split('|')
-    if len(parts) == 1:
-        system, code = '', value
-    elif len(parts) == 2:
-        system, code = parts
-    else:
-        raise ValueError
-    return system, code, modifier
+    def __init__(self, value, name=None, operator='='):
+        super(FHIRDate, self).__init__(value, name, operator)
+        if isinstance(self.value, bool):
+            self.operation = None
+        else:
+            operation, datestr = value[0:2], value[2:]
+            if operation in _prefixes:
+                # note that the method raises a Value Error if it fails, as required by Flask Restful
+                self.value = isoparse(datestr)
+                self.operation = operation
+            else:
+                raise ValueError
 
 
-def fhir_reference(value, name=None, modifier=None):
-    from fhirserver.resources import RESOURCES
+class FHIRString(BaseFHIRSearch):
 
-    allowed_modifiers = ['=', ':missing=', ':identifier=', ':above=', ':below='] + RESOURCES
-    _check_modifier(value, modifier, allowed_modifiers)
+    OPERATORS = ('=', ':missing=', ':exact=', ':contains=')
 
-    if modifier == ':missing=':
-        return value == 'true', None, modifier
-
-    # we reduce case like Observation?subject:Patient=23 to Observation?subject=Patient/23
-    if modifier in RESOURCES:
-        value = '{}/{}'.format(modifier, value)
-        modifier = None
-
-    parts = value.split('/')
-    if len(parts) == 1:
-        typ = None  # value remains the same
-    elif len(parts) == 2:
-        typ, value = parts
-    else:
-        raise ValueError
-    return value, typ, modifier
+    def __init__(self, value, name=None, operator='='):
+        super(FHIRString, self).__init__(value, name, operator)
+        if not isinstance(self.value, bool):
+            self.value = value
 
 
-def fhir_quantity(value, name=None, modifier=None):
-    # this will eventually fail in a ValueError
-    allowed_modifiers = ('=', ':missing=')
-    _check_modifier(value, modifier, allowed_modifiers)
-    if modifier == ':missing=':
-        return value == 'true', None, modifier
+class FHIRToken(BaseFHIRSearch):
 
-    parts = value.split('|')
-    if len(parts) == 2:  # it means we only have one of system|code which is not allowed
-        raise ValueError
-    elif len(parts) == 3:
-        value, system, code = parts
-    else:
-        system, code = None, None
+    OPERATORS = ('=', ':missing=', ':not=', ':in=', ':not-in=', ':below=', ':above=')
 
-    value, operation, modifier = fhir_number(value)  # the first parameter follow the rules of fhir_number
-    return value, operation, system, code, modifier
+    def __init__(self, value, name=None, operator='='):
+        super(FHIRToken, self).__init__(value, name, operator)
+
+        if isinstance(self.value, bool):
+            self.system = None
+        else:
+            parts = value.split('|')
+
+            if len(parts) == 1:
+                system, code = '', value
+            elif len(parts) == 2:
+                system, code = parts
+            else:
+                raise ValueError
+
+            self.system = system
+            self.value = code
 
 
-def fhir_uri(value, name=None, modifier=None):
-    allowed_modifiers = ('=', ':missing=', ':above=', ':below=')
-    _check_modifier(value, modifier, allowed_modifiers)
-    if modifier == ':missing=':
-        return value == 'true', None, modifier
-    return value, modifier
+class FHIRReference(BaseFHIRSearch):
+
+    OPERATORS = ['=', ':missing=', ':identifier=', ':above=', ':below=']
+
+    def __init__(self, value, name=None, operator='='):
+        # we reduce case like Observation?subject:Patient=23 to Observation?subject=Patient/23
+        from fhirserver.resources import RESOURCES
+
+        if operator in RESOURCES:
+            value = '{}/{}'.format(operator, value)
+            operator = None
+
+        super(FHIRReference, self).__init__(value, name, operator)
+
+        if isinstance(self.value, bool):
+            self.type = None
+        else:
+            parts = value.split('/')
+            if len(parts) == 1:
+                typ = None  # value remains the same
+            elif len(parts) == 2:
+                typ, value = parts
+            else:
+                raise ValueError
+
+            self.value = value
+            self.type = typ
+
+
+class FHIRQuantity(FHIRNumber):
+    def __init__(self, value, name=None, operator='='):
+
+        parts = value.split('|')
+        if len(parts) == 2:  # it means we only have one of system|code which is not allowed
+            raise ValueError
+        elif len(parts) == 3:
+            value, system, code = parts
+        else:
+            system, code = None, None
+
+        super(FHIRQuantity, self).__init__(value, name, operator)
+        if isinstance(self.value, bool):
+            self.system = None
+            self.code = None
+        else:
+            self.system = system
+            self.code = code
+
+
+class FHIRUri(BaseFHIRSearch):
+    OPERATORS = ('=', ':missing=', ':above=', ':below=')
+
+    def __init__(self, value, name=None, operator='='):
+        super(FHIRUri, self).__init__(value, name, operator)
+
+        if self.value is None:
+            self.value = value
 
 
 class FHIRSearchTypes(Enum):
@@ -144,13 +182,13 @@ class FHIRSearchTypes(Enum):
     @classmethod
     def get_type_handler(cls, enum_value):
         typ_map = {
-            cls.NUMBER: fhir_number,
-            cls.DATE: fhir_date,
-            cls.STRING: fhir_string,
-            cls.TOKEN: fhir_token,
-            cls.REFERENCE: fhir_reference,
-            cls.QUANTITY: fhir_quantity,
-            cls.URI: fhir_uri
+            cls.NUMBER: FHIRNumber,
+            cls.DATE: FHIRDate,
+            cls.STRING: FHIRString,
+            cls.TOKEN: FHIRToken,
+            cls.REFERENCE: FHIRReference,
+            cls.QUANTITY: FHIRQuantity,
+            cls.URI: FHIRUri
         }
         return typ_map[enum_value]
 
@@ -161,14 +199,5 @@ def query_argument_type_factory(name, typ, dest=None):
     except KeyError:
         raise Exception('Unkown argument type')
 
-    modifiers = ['=', ':missing=']
-    if typ == FHIRSearchTypes.STRING:
-        modifiers += [':exact=', ':contains=']
-    elif typ == FHIRSearchTypes.TOKEN:
-        modifiers += [':not=', ':in=', '=:not-in', '=:below', '=:above']
-    elif typ == FHIRSearchTypes.REFERENCE:
-        modifiers += ['=:identifier', '=:above', '=:below']
-    elif typ == FHIRSearchTypes.QUANTITY:
-        modifiers += ['=:above', '=:below']
-
-    return Argument(name, dest=dest, type=typ_handler, operators=modifiers, required=False, location='args')
+    return Argument(name, dest=dest, type=typ_handler, operators=typ_handler.OPERATORS,
+                    required=False, location='args')

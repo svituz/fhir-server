@@ -32,7 +32,7 @@ class BaseListResource(Resource):
         }
 
     @staticmethod
-    def _get_headers():
+    def _parse_headers():
         """
         Check that Accept exists and the only accepted value is application/fhir+json
         :return:
@@ -48,7 +48,7 @@ class BaseListResource(Resource):
         return {name: value for name, value in args.items() if value is not None}
 
     @staticmethod
-    def _get_search_parameters(resource_arguments):
+    def _parse_search_parameters(resource_arguments):
         """
         Parse
         :return:
@@ -64,6 +64,7 @@ class BaseListResource(Resource):
         parser.add_argument(query_argument_type_factory('_tag', FHIRSearchTypes.TOKEN, 'tag'))
         for argument in resource_arguments:
             parser.add_argument(argument)
+
         try:
             args = parser.parse_args(strict=True)
         except HTTPException as e:
@@ -86,7 +87,7 @@ class BaseListResource(Resource):
     def post(self, resource_type):
         resource = _get_resource('{}ListResource'.format(resource_type))
 
-        self._get_headers()
+        self._parse_headers()
 
         item = resource.post()
 
@@ -101,7 +102,8 @@ class BaseListResource(Resource):
         resource = _get_resource('{}ListResource'.format(resource_type))
 
         arguments = resource.get_search_parameters()
-        parsed_arguments = self._get_search_parameters(arguments)
+
+        parsed_arguments = self._parse_search_parameters(arguments)
 
         items = resource.get(parsed_arguments)
 
