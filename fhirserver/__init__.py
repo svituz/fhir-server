@@ -1,11 +1,9 @@
-from fhirclient.models.fhirabstractbase import FHIRValidationError
-from fhirclient.models.operationoutcome import OperationOutcome, OperationOutcomeIssue
 from flask import Flask, make_response
 from flask_restful import Api
 from flask_sqlalchemy import SQLAlchemy
-from werkzeug.exceptions import NotFound
 
 from config import DevelopConfig, TestConfig
+from fhirclient.models.operationoutcome import OperationOutcome, OperationOutcomeIssue
 from fhirserver.consts import ISSUE_SEVERITY, ISSUE_TYPE
 from fhirserver.exceptions import FHIRServerException
 
@@ -23,7 +21,7 @@ def create_app(config):
     from fhirserver.resources.patient import PatientResource, PatientListResource
 
     app = Flask('FHIR Server')
-    conf = DevelopConfig
+
     if config == DEVELOPMENT:
         conf = DevelopConfig
     elif config == TESTING:
@@ -61,8 +59,6 @@ def create_app(config):
 
         db.create_all()
 
-        # api.add_resource(PatientResource, '/Patient/<string:patient_id>', '/Patient/<string:patient_id>/')
-        # api.add_resource(PatientListResource, '/Patient', '/Patient/')
         api.add_resource(BaseListResource, '/<string:resource_type>', '/<string:resource_type>/')
         api.add_resource(BaseResource, '/<string:resource_type>/<string:resource_id>',
                          '/<string:resource_type>/<string:resource_id>/')

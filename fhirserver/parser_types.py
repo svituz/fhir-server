@@ -1,5 +1,7 @@
-import operator as op
+from enum import Enum
+
 from dateutil.parser import isoparse
+from flask_restful.reqparse import Argument
 
 _prefixes = ('eq', 'ne', 'gt', 'lt', 'ge', 'le', 'gt', 'sa', 'eb', 'ap')
 
@@ -7,7 +9,7 @@ _prefixes = ('eq', 'ne', 'gt', 'lt', 'ge', 'le', 'gt', 'sa', 'eb', 'ap')
 def _check_modifier(value, modifier, allowed_modifiers):
     if modifier not in allowed_modifiers:
         raise ValueError
-    if modifier == ':missing' and value not in ('true', 'false'):
+    if modifier == ':missing=' and value not in ('true', 'false'):
         raise ValueError
 
 
@@ -15,9 +17,9 @@ def fhir_number(value, name=None, modifier=None):
     """
     A fhir number parameter can be a number or a number prefixed with a modifier (e.g., 10, 10.0, ne10)
     """
-    _check_modifier(value, modifier, (None, ':missing'))
+    _check_modifier(value, modifier, (None, ':missing='))
 
-    if modifier == ':missing':
+    if modifier == ':missing=':
         return value == 'true', None, modifier
 
     operation, number = value[0:2], value[2:]
@@ -35,10 +37,10 @@ def fhir_number(value, name=None, modifier=None):
 
 
 def fhir_date(value, name=None, modifier=None):
-    allowed_modifiers = (None, ':missing')
+    allowed_modifiers = ('=', ':missing=')
     _check_modifier(value, modifier, allowed_modifiers)
 
-    if modifier == ':missing':
+    if modifier == ':missing=':
         return value == 'true', None, modifier
 
     operation, datestr = value[0:2], value[2:]
@@ -49,22 +51,22 @@ def fhir_date(value, name=None, modifier=None):
 
 
 def fhir_string(value, name=None, modifier=None):
-    allowed_modifiers = (None, ':missing', ':exact', ':contains')
+    allowed_modifiers = ('=', ':missing=', ':exact', ':contains')
     _check_modifier(value, modifier, allowed_modifiers)
 
-    if modifier == ':missing':
+    if modifier == ':missing=':
         return value == 'true', None, modifier
 
     return value, modifier
 
 
 def fhir_token(value, name=None, modifier=None):
-    allowed_modifiers = (None, ':missing', ':not', ':in', ':not-in', ':below', ':above')
+
+    allowed_modifiers = ('=', ':missing=', ':not=', ':in=', ':not-in=', ':below=', ':above=')
     _check_modifier(value, modifier, allowed_modifiers)
 
-    if modifier == ':missing':
+    if modifier == ':missing=':
         return value == 'true', None, modifier
-
     parts = value.split('|')
     if len(parts) == 1:
         system, code = '', value
@@ -78,10 +80,10 @@ def fhir_token(value, name=None, modifier=None):
 def fhir_reference(value, name=None, modifier=None):
     from fhirserver.resources import RESOURCES
 
-    allowed_modifiers = [None, ':missing', ':identifier', ':above', ':below'] + RESOURCES
+    allowed_modifiers = ['=', ':missing=', ':identifier=', ':above=', ':below='] + RESOURCES
     _check_modifier(value, modifier, allowed_modifiers)
 
-    if modifier == ':missing':
+    if modifier == ':missing=':
         return value == 'true', None, modifier
 
     # we reduce case like Observation?subject:Patient=23 to Observation?subject=Patient/23
@@ -101,9 +103,9 @@ def fhir_reference(value, name=None, modifier=None):
 
 def fhir_quantity(value, name=None, modifier=None):
     # this will eventually fail in a ValueError
-    allowed_modifiers = (None, ':missing')
+    allowed_modifiers = ('=', ':missing=')
     _check_modifier(value, modifier, allowed_modifiers)
-    if modifier == ':missing':
+    if modifier == ':missing=':
         return value == 'true', None, modifier
 
     parts = value.split('|')
@@ -119,8 +121,54 @@ def fhir_quantity(value, name=None, modifier=None):
 
 
 def fhir_uri(value, name=None, modifier=None):
-    allowed_modifiers = (None, ':missing', ':above', ':below')
+    allowed_modifiers = ('=', ':missing=', ':above=', ':below=')
     _check_modifier(value, modifier, allowed_modifiers)
-    if modifier == ':missing':
+    if modifier == ':missing=':
         return value == 'true', None, modifier
     return value, modifier
+
+
+class FHIRSearchTypes(Enum):
+    NUMBER = 1
+    DATE = 2
+    STRING = 3
+    TOKEN = 4
+    REFERENCE = 5
+    QUANTITY = 6
+    URI = 7
+
+    @classmethod
+    def has_value(cls, value):
+        return value in cls._value2member_map_
+
+    @classmethod
+    def get_type_handler(cls, enum_value):
+        typ_map = {
+            cls.NUMBER: fhir_number,
+            cls.DATE: fhir_date,
+            cls.STRING: fhir_string,
+            cls.TOKEN: fhir_token,
+            cls.REFERENCE: fhir_reference,
+            cls.QUANTITY: fhir_quantity,
+            cls.URI: fhir_uri
+        }
+        return typ_map[enum_value]
+
+
+def query_argument_type_factory(name, typ, dest=None):
+    try:
+        typ_handler = FHIRSearchTypes.get_type_handler(typ)
+    except KeyError:
+        raise Exception('Unkown argument type')
+
+    modifiers = ['=', ':missing=']
+    if typ == FHIRSearchTypes.STRING:
+        modifiers += [':exact=', ':contains=']
+    elif typ == FHIRSearchTypes.TOKEN:
+        modifiers += [':not=', ':in=', '=:not-in', '=:below', '=:above']
+    elif typ == FHIRSearchTypes.REFERENCE:
+        modifiers += ['=:identifier', '=:above', '=:below']
+    elif typ == FHIRSearchTypes.QUANTITY:
+        modifiers += ['=:above', '=:below']
+
+    return Argument(name, dest=dest, type=typ_handler, operators=modifiers, required=False, location='args')

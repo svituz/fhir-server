@@ -1,13 +1,8 @@
-from datetime import datetime, date
+from datetime import datetime
 
-import requests
-from fhirclient.models.fhirabstractbase import FHIRValidationError
-from fhirclient.models.patient import Patient
-
-from config import TestConfig
 from fhirserver import create_app, TESTING
 from fhirserver.consts import ISSUE_TYPE, ISSUE_SEVERITY
-from fhirserver.models import PatientModel
+from fhirserver.dao.patient import PatientModel
 from fhirserver import db
 from flask_testing import TestCase
 
@@ -65,7 +60,7 @@ class TestPatient(TestCase):
         for patient in self.patients_data:
             pm = PatientModel(**patient)
             db.session.add(pm)
-            patient['identifier'] = pm.identifier
+            patient['id'] = pm.id
 
         db.session.commit()
 
@@ -74,9 +69,8 @@ class TestPatient(TestCase):
                                json=self.patient_data,
                                headers={'Accept': 'application/fhir+json'})
         self.assertEqual(res.status_code, 201)
-        identifier = res.json['identifier'][0]['value']
         self.assertEqual(res.headers['Content-Type'], 'application/fhir+json')
-        self.assertEqual(res.headers['Location'], '{}/Patient/{}'.format(self.settings['api_base'], identifier))
+        self.assertEqual(res.headers['Location'], '{}/Patient/{}'.format(self.settings['api_base'], res.json['id']))
 
     def test_wrong_accept_header(self):
         res = self.client.post('/Patient',
@@ -133,7 +127,7 @@ class TestPatient(TestCase):
         self.assertEqual(res.json['issue'], op_outcome_issues)
 
     def test_get_patient_by_id(self):
-        res = self.client.get('/Patient/{}'.format(self.patients_data[0]['identifier']),
+        res = self.client.get('/Patient/{}'.format(self.patients_data[0]['id']),
                               headers={'Accept': 'application/fhir+json'})
         self.assert200(res)
         self.assertEqual(res.json['resourceType'], 'Patient')
@@ -146,14 +140,13 @@ class TestPatient(TestCase):
         self.assertEqual(res.json['type'], 'searchset')
         for index, patient in enumerate(res.json['entry']):
             self.assertEqual(patient['fullUrl'],
-                             '{}/Patient/{}'.format(self.settings['api_base'], self.patients_data[index]['identifier']))
+                             '{}/Patient/{}'.format(self.settings['api_base'], self.patients_data[index]['id']))
             self.assertEqual(patient['resource'], PatientModel(**self.patients_data[index]).to_fhir_res().as_json())
 
     def test_search_patients(self):
         queries = [
-            {'_id': self.patients_data[0]['identifier'], 'expected': 1},
-            {'_id:text': self.patients_data[0]['identifier'], 'expected': 1},
-            # {'identifier': self.patients_data[0]['identifier'], 'expected': 1},
+            {'_id': self.patients_data[0]['id'], 'expected': 1},
+            # {'id': self.patients_data[0]['id'], 'expected': 1},
             {'gender': 'f', 'expected': 2},
             {'active': True, 'expected': 4},
             {'birthdate': 'eq{}'.format(self.patients_data[0]['birth_date'].date().isoformat()), 'expected': 1},

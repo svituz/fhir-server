@@ -1,20 +1,18 @@
 from flask import request
 from flask_restful import Resource
-from flask_restful.reqparse import RequestParser
-from werkzeug.exceptions import HTTPException
 
 from fhirclient.models.fhirabstractbase import FHIRValidationError
-from fhirclient.models.patient import Patient
+from fhirclient.models.patient import Patient as FHIRPatient
 from fhirserver import db
-from fhirserver.exceptions import InvalidBodyException, NotFoundException, InvalidQueryParameterException
-from fhirserver.models import PatientModel
-from fhirserver.parser_types import fhir_date, fhir_token
+from fhirserver.exceptions import InvalidBodyException, NotFoundException
+from fhirserver.dao.patient import PatientDAO
+from fhirserver.parser_types import query_argument_type_factory, FHIRSearchTypes
 
 patients_db = {}
 
 
 def _get_patient(patient_id):
-    p = Patient()
+    p = FHIRPatient()
     p.id = str(patient_id)
     return p
 
@@ -24,56 +22,53 @@ class PatientResource(Resource):
     Rest resource for Patient
     """
     def get(self, patient_id):
-        patient = PatientModel.query.filter_by(identifier=patient_id).first()
+        patient = PatientDAO.get(patient_id)
         if patient is None:
-            print("search failed")
             raise NotFoundException
         else:
-            return patient.to_fhir_res().as_json(), 200,
+            return patient.as_json(), 200,
 
 
 class PatientListResource(Resource):
-    def get(self):
-        qp_parser = RequestParser()
-        operators = ['=', ':text=', ':not=', ':above=', ':below=', ':in=', ':not-in=', ':of-type=']
-        qp_parser.add_argument('_id', dest='identifier', location='args', type=fhir_token, operators=operators)
-        qp_parser.add_argument('gender', type=str, help='The gender of the patient(s)',
-                               choices=('f', 'm'), location='args')
-        qp_parser.add_argument('active', type=bool, location='args')
-        qp_parser.add_argument('birthdate', dest='birth_date', type=fhir_date, location='args')
-        # qp_parser.add_argument('identifier', location='args', type=fhir_token)
 
-        try:
-            args = qp_parser.parse_args()
-        except HTTPException as e:
-            raise InvalidQueryParameterException(e.code, e.data)
+    def get_search_parameters(self):
+        arguments = [
+            query_argument_type_factory('active', FHIRSearchTypes.TOKEN),
+            query_argument_type_factory('address', FHIRSearchTypes.STRING),
+            query_argument_type_factory('address-city', FHIRSearchTypes.STRING),
+            query_argument_type_factory('address-countr', FHIRSearchTypes.STRING),
+            query_argument_type_factory('address-postalcode', FHIRSearchTypes.STRING),
+            query_argument_type_factory('address-state', FHIRSearchTypes.STRING),
+            query_argument_type_factory('address-use', FHIRSearchTypes.STRING),
+            query_argument_type_factory('birthdate', FHIRSearchTypes.DATE),
+            query_argument_type_factory('death-date', FHIRSearchTypes.DATE),
+            query_argument_type_factory('deceased', FHIRSearchTypes.TOKEN),
+            query_argument_type_factory('email', FHIRSearchTypes.TOKEN),
+            query_argument_type_factory('family', FHIRSearchTypes.STRING),
+            query_argument_type_factory('gender', FHIRSearchTypes.TOKEN),
+            query_argument_type_factory('general-practitioner', FHIRSearchTypes.REFERENCE),
+            query_argument_type_factory('given', FHIRSearchTypes.TOKEN),
+            query_argument_type_factory('identifier', FHIRSearchTypes.TOKEN),
+            query_argument_type_factory('language', FHIRSearchTypes.TOKEN),
+            query_argument_type_factory('link', FHIRSearchTypes.REFERENCE),
+            query_argument_type_factory('name', FHIRSearchTypes.STRING),
+            query_argument_type_factory('organization', FHIRSearchTypes.REFERENCE),
+            query_argument_type_factory('phone', FHIRSearchTypes.TOKEN),
+            query_argument_type_factory('phonetic', FHIRSearchTypes.STRING),
+            query_argument_type_factory('telecom', FHIRSearchTypes.TOKEN),
+        ]
+        return arguments
 
-        filters = []
-
-        for name, value in args.items():
-            if value is not None:
-                if isinstance(value, tuple):
-                    if len(value) == 2:
-                        operation, value = value
-                        if isinstance(value, tuple):
-                            value = value[1]
-                        filters.append(operation(getattr(PatientModel, name), value))
-                    else:
-                        filters.append(getattr(PatientModel, name) == value)
-                else:
-                    filters.append(getattr(PatientModel, name) == value)
-        patients = PatientModel.query.filter(*filters).all()
-        return [patient.to_fhir_res() for patient in patients]
+    def get(self, arguments):
+        patients = PatientDAO.search(**arguments)
+        return patients
 
     def post(self):
         data = request.json
         try:
-            patient = Patient(data)
+            patient = FHIRPatient(data)
         except FHIRValidationError as e:
             raise InvalidBodyException(e)
         else:
-            db_patient = PatientModel.from_fhir_res(patient)
-            db.session.add(db_patient)
-            db.session.commit()
-
-        return db_patient.to_fhir_res()
+            res = PatientDAO.create(patient)
+            return res
