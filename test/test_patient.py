@@ -30,22 +30,24 @@ class TestPatient(TestCase):
             'given_name': 'Carla',
             'family_name': 'Espinoza',
             'gender': 'f',
-            'birth_date': datetime.fromisoformat('1965-12-11')
+            'birthdate': datetime.fromisoformat('1965-12-11'),
+            'address': 'Sacred Heart Street'
         }, {
             'given_name': 'Elliot',
             'family_name': 'Reed',
             'gender': 'f',
-            'birth_date': datetime.fromisoformat('1970-06-18')
+            'birthdate': datetime.fromisoformat('1970-06-18'),
+            'address': 'Sacred Heart Street'
         }, {
             'given_name': 'John Arthur',
             'family_name': 'Dorian',
             'gender': 'm',
-            'birth_date': datetime.fromisoformat('1970-10-05')
+            'address': 'Sacred Heart Street'
         }, {
             'given_name': 'Percival',
             'family_name': 'Cox',
             'gender': 'm',
-            'birth_date': datetime.fromisoformat('1962-07-13')
+            'birthdate': datetime.fromisoformat('1962-07-13')
         }]
         self.add_test_patients()
 
@@ -143,22 +145,53 @@ class TestPatient(TestCase):
                              '{}/Patient/{}'.format(self.settings['api_base'], self.patients_data[index]['id']))
             self.assertEqual(patient['resource'], PatientModel(**self.patients_data[index]).to_fhir_res().as_json())
 
-    # def test_search_patients(self):
-    #     queries = [
-    #         {'_id': self.patients_data[0]['id'], 'expected': 1},
-    #         # {'id': self.patients_data[0]['id'], 'expected': 1},
-    #         {'gender': 'f', 'expected': 2},
-    #         {'active': True, 'expected': 4},
-    #         {'birthdate': 'eq{}'.format(self.patients_data[0]['birth_date'].date().isoformat()), 'expected': 1},
-    #     ]
-    #     for query in queries:
-    #         query_string = "&".join(["{}={}".format(param_name, param_value)
-    #                                  for param_name, param_value in query.items() if param_name != 'expected'])
-    #         res = self.client.get('/Patient?{}'.format(query_string), headers={'Accept': 'application/fhir+json'})
-    #         self.assert200(res)
-    #         self.assertEqual(res.json['resourceType'], 'Bundle')
-    #         self.assertEqual(res.json['type'], 'searchset')
-    #         self.assertEqual(res.json['total'], len(res.json['entry']), query['expected'])
+    def _search_patient(self, queries):
+        for query in queries:
+            query_string = "&".join(["{}={}".format(param_name, param_value)
+                                     for param_name, param_value in query.items() if param_name != 'expected'])
+
+            res = self.client.get('/Patient?{}'.format(query_string), headers={'Accept': 'application/fhir+json'})
+            self.assert200(res)
+            self.assertEqual(res.json['resourceType'], 'Bundle')
+            self.assertEqual(res.json['type'], 'searchset')
+            self.assertEqual(res.json['total'], query['expected'])
+            self.assertEqual(len(res.json['entry']), query['expected'])
+
+    def test_search_by_string(self):
+        queries = [
+            # {'_id': self.patients_data[0]['id'], 'expected': 1},
+            {'address': self.patients_data[0]['address'], 'expected': 3},
+            {'address:exact': self.patients_data[0]['address'], 'expected': 3},
+            {'address:contains': self.patients_data[0]['address'][4:10], 'expected': 3},
+            {'address:missing': 'true', 'expected': 1},
+            {'address:missing': 'false', 'expected': 3}
+        ]
+        self._search_patient(queries)
+
+    def test_search_by_date(self):
+        queries = [
+            {'birthdate:missing': 'true', 'expected': 1},
+            {'birthdate': 'eq{}'.format(self.patients_data[0]['birthdate'].date().isoformat()), 'expected': 1},
+            {'birthdate': 'eq{}T15:00:31'.format(self.patients_data[0]['birthdate'].date().isoformat()), 'expected': 1},
+            {'birthdate': 'eq1850-08-23T15:00:31', 'expected': 0},
+            {'birthdate': 'ne1850-08-23T15:00:31', 'expected': 3},
+            {'birthdate': 'ne{}'.format(self.patients_data[0]['birthdate'].date().isoformat()), 'expected': 2},
+            {'birthdate': 'lt1966', 'expected': 2},
+            {'birthdate': 'lt1965-12-11T11:00', 'expected': 2},
+            {'birthdate': 'gt1966', 'expected': 1},
+            {'birthdate': 'gt1965-12-11T11:00', 'expected': 2},
+            {'birthdate': 'le1965-12-11', 'expected': 2},
+            {'birthdate': 'ge1965-12-11', 'expected': 2},
+            {'birthdate': 'sa1966', 'expected': 1},
+            {'birthdate': 'sa1965-12-11T11:00', 'expected': 2},
+            {'birthdate': 'eb1966', 'expected': 2},
+            {'birthdate': 'eb1965-12-11T11:00', 'expected': 2},
+            {'birthdate': 'ap1965-12-10', 'expected': 1},
+            {'birthdate': 'ap1965-12-12', 'expected': 1},
+            {'birthdate': 'ap1965-12-09', 'expected': 0},
+            {'birthdate': 'ap1965-12-13', 'expected': 0},
+        ]
+        self._search_patient(queries)
 
     def test_search_wrong_date_format(self):
         res = self.client.get('/Patient?birthdate=19650606', headers={'Accept': 'application/fhir+json'})
@@ -170,11 +203,11 @@ class TestPatient(TestCase):
         # }]
         # self.assertEqual(res.json['issue'], op_outcome_issues)
 
-    def test_search_patients_no_entry_found(self):
-        res = self.client.get('/Patient?_id=unknown', headers={'Accept': 'application/fhir+json'})
-        self.assert200(res)
-        self.assertEqual(res.json['resourceType'], 'Bundle')
-        self.assertEqual(res.json['type'], 'searchset')
-        self.assertEqual(res.json['total'], 0)
-        self.assertEqual(res.json['entry'], [])
+    # def test_search_patients_no_entry_found(self):
+    #     res = self.client.get('/Patient?_id=unknown', headers={'Accept': 'application/fhir+json'})
+    #     self.assert200(res)
+    #     self.assertEqual(res.json['resourceType'], 'Bundle')
+    #     self.assertEqual(res.json['type'], 'searchset')
+    #     self.assertEqual(res.json['total'], 0)
+    #     self.assertEqual(res.json['entry'], [])
 

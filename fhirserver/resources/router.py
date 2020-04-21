@@ -62,11 +62,12 @@ class BaseListResource(Resource):
         parser.add_argument(query_argument_type_factory('_security', FHIRSearchTypes.TOKEN, 'security'))
         parser.add_argument(query_argument_type_factory('_source', FHIRSearchTypes.URI, 'source'))
         parser.add_argument(query_argument_type_factory('_tag', FHIRSearchTypes.TOKEN, 'tag'))
+
         for argument in resource_arguments:
             parser.add_argument(argument)
 
         try:
-            args = parser.parse_args(strict=True)
+            args = parser.parse_args()
         except HTTPException as e:
             raise InvalidQueryParameterException(e.code, e.data)
         return {name: value for name, value in args.items() if value is not None}
@@ -98,7 +99,6 @@ class BaseListResource(Resource):
         return item.as_json(), 201, headers
 
     def get(self, resource_type):
-
         resource = _get_resource('{}ListResource'.format(resource_type))
 
         arguments = resource.get_search_parameters()

@@ -36,7 +36,7 @@ class PatientListResource(Resource):
             query_argument_type_factory('active', FHIRSearchTypes.TOKEN),
             query_argument_type_factory('address', FHIRSearchTypes.STRING),
             query_argument_type_factory('address-city', FHIRSearchTypes.STRING),
-            query_argument_type_factory('address-countr', FHIRSearchTypes.STRING),
+            query_argument_type_factory('address-country', FHIRSearchTypes.STRING),
             query_argument_type_factory('address-postalcode', FHIRSearchTypes.STRING),
             query_argument_type_factory('address-state', FHIRSearchTypes.STRING),
             query_argument_type_factory('address-use', FHIRSearchTypes.STRING),

@@ -13,6 +13,8 @@ class DevelopConfig:
     SQLALCHEMY_DATABASE_URI = environ.get('SQLALCHEMY_DATABASE_URI', 'sqlite:////tmp/test.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = environ.get('SQLALCHEMY_TRACK_MODIFICATIONS', False)
 
+    OPERATORS_MODULE = 'fhirserver.db_drivers'
+
 
 class TestConfig:
     # General
@@ -23,3 +25,5 @@ class TestConfig:
     # Database
     SQLALCHEMY_DATABASE_URI = 'sqlite:////tmp/test.db'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    OPERATORS_MODULE = 'fhirserver.db_drivers'

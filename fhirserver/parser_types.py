@@ -5,9 +5,26 @@ from dateutil.parser import isoparse
 from flask_restful.reqparse import Argument
 # from flask import current_app
 #
-# operators_mod = importlib.import_module(current_app.config['OPERATORS_MODULE'])
 
-_prefixes = ('eq', 'ne', 'gt', 'lt', 'ge', 'le', 'gt', 'sa', 'eb', 'ap')
+from fhirserver.db_drivers import sqlalchemy as db_driver
+
+# FHIRPrefixes = ('eq', 'ne', 'gt', 'lt', 'ge', 'le', 'gt', 'sa', 'eb', 'ap')
+
+
+class FHIRPrefixes(object):
+    EQ = 'eq'
+    NE = 'ne'
+    GT = 'gt'
+    LT = 'lt'
+    GE = 'ge'
+    LE = 'le'
+    SA = 'sa'
+    EB = 'eb'
+    AP = 'ap'
+
+    @classmethod
+    def values(cls):
+        return cls.__dict__.values()
 
 
 class FHIRModifiers(object):
@@ -87,7 +104,7 @@ class FHIRNumber(BaseFHIRSearch):
         if self.value is None:
             operation, number = value[0:2], value[2:]
 
-            if operation not in _prefixes:
+            if operation not in FHIRPrefixes.values():
                 operation = 'eq'
                 number = value
 
@@ -110,12 +127,30 @@ class FHIRDate(BaseFHIRSearch):
             self.operation = None
         else:
             operation, datestr = value[0:2], value[2:]
-            if operation in _prefixes:
+            if operation in FHIRPrefixes.values():
                 # note that the method raises a Value Error if it fails, as required by Flask Restful
                 self.value = isoparse(datestr)
                 self.operation = operation
             else:
                 raise ValueError
+
+    def get_query_condition(self, item):
+        if self.modifier == FHIRModifiers.MISSING:
+            return db_driver.missing(item, self.value)
+        elif self.operation == FHIRPrefixes.EQ:
+            return db_driver.date_eq(item, self.value)
+        elif self.operation == FHIRPrefixes.NE:
+            return db_driver.date_ne(item, self.value)
+        elif self.operation in (FHIRPrefixes.LT, FHIRPrefixes.EB):
+            return db_driver.date_lt(item, self.value)
+        elif self.operation in (FHIRPrefixes.GT, FHIRPrefixes.SA):
+            return db_driver.date_gt(item, self.value)
+        elif self.operation == FHIRPrefixes.LE:
+            return db_driver.date_le(item, self.value)
+        elif self.operation == FHIRPrefixes.GE:
+            return db_driver.date_ge(item, self.value)
+        elif self.operation == FHIRPrefixes.AP:
+            return db_driver.date_ap(item, self.value)
 
 
 class FHIRString(BaseFHIRSearch):
@@ -127,20 +162,15 @@ class FHIRString(BaseFHIRSearch):
         if not isinstance(self.value, bool):
             self.value = value
 
-        # if self.modifier is None:
-        #     self.operator = operators_mod.eq
-        # elif self.modifier == FHIRModifiers.EXACT:
-        #     self.operator = operators_mod.eq
-        # elif self.modifier == FHIRModifiers.MISSING:
-        #     self.operator = operators_mod.missing
-        # elif self.modifier:
-        #     self.operator = operators_mod.contains
-        #     if qp.value is True:
-        #         filters.append(getattr(PatientModel, name) == None)
-        #     else:
-        #         filters.append(getattr(PatientModel, name) != None)
-        # elif self.modifier == FHIRModifiers.CONTAINS:
-        #     filters.append(getattr(PatientModel, name).like('%{}%'.format(qp.value)))
+    def get_query_condition(self, item):
+        if self.modifier is None:
+            return db_driver.equal(item, self.value)
+        elif self.modifier == FHIRModifiers.EXACT:
+            return db_driver.exact(item, self.value)
+        elif self.modifier == FHIRModifiers.MISSING:
+            return db_driver.missing(item, self.value)
+        elif self.modifier == FHIRModifiers.CONTAINS:
+            return db_driver.contains(item, self.value)
 
 
 class FHIRToken(BaseFHIRSearch):
@@ -231,6 +261,6 @@ def query_argument_type_factory(name, typ, dest=None):
         typ_handler = FHIRSearchTypes.get_type_handler(typ)
     except KeyError:
         raise Exception('Unkown argument type')
-    print(typ_handler.OPERATORS)
+
     return Argument(name, dest=dest, type=typ_handler, operators=typ_handler.OPERATORS,
                     required=False, location='args')
